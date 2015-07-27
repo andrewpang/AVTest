@@ -11,8 +11,11 @@
 
 @interface ViewController : UIViewController{
     IBOutlet UIView *frameForCapture;
+    
 }
 
+@property(nonatomic, retain) AVCaptureStillImageOutput *stillImageOutput;
+@property (nonatomic) dispatch_queue_t queue;
 //- (IBAction)takePhoto:(id)sender;
 
 
