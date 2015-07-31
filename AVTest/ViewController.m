@@ -20,6 +20,7 @@ AVCaptureSession *session;
 CGRect frame;
 AVCaptureStillImageOutput *stillImageOutput;
 bool saveImage = NO;
+NSMutableArray *images;
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -28,6 +29,7 @@ bool saveImage = NO;
 }
 
 - (void)viewWillAppear:(BOOL)animated {
+    images = [[NSMutableArray alloc] init];
     [self setupCaptureSession];
 }
 
@@ -112,8 +114,7 @@ bool saveImage = NO;
 {
     UIImage *image = [self imageFromSampleBuffer:sampleBuffer];
     if(saveImage == true){
-        NSLog(@"hey");
-        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil);
+        [images addObject: image];
     }
 }
 
@@ -204,6 +205,84 @@ bool saveImage = NO;
 //     }];
 //}
 
+-(void) writeImagesToMovieAtPath:(NSString *) path withSize:(CGSize) size
+{
+    NSError *error = nil;
+    
+    AVAssetWriter *videoWriter = [[AVAssetWriter alloc] initWithURL:
+                                  [NSURL fileURLWithPath:path] fileType:AVFileTypeMPEG4
+                                                              error:&error];
+    NSParameterAssert(videoWriter);
+    NSDictionary *videoSettings = [NSDictionary dictionaryWithObjectsAndKeys:
+                                   AVVideoCodecH264, AVVideoCodecKey,
+                                   [NSNumber numberWithInt:size.width], AVVideoWidthKey,
+                                   [NSNumber numberWithInt:size.height], AVVideoHeightKey,
+                                   nil];
+    AVAssetWriterInput* videoWriterInput = [AVAssetWriterInput
+                                             assetWriterInputWithMediaType:AVMediaTypeVideo
+                                             outputSettings:videoSettings];
+    AVAssetWriterInputPixelBufferAdaptor *adaptor = [AVAssetWriterInputPixelBufferAdaptor
+                                                     assetWriterInputPixelBufferAdaptorWithAssetWriterInput:videoWriterInput
+                                                     sourcePixelBufferAttributes:nil];
+    NSParameterAssert(videoWriterInput);
+    NSParameterAssert([videoWriter canAddInput:videoWriterInput]);
+    videoWriterInput.expectsMediaDataInRealTime = YES;
+    [videoWriter addInput:videoWriterInput];
+    //Start a session:
+    [videoWriter startWriting];
+    [videoWriter startSessionAtSourceTime:kCMTimeZero];
+    
+    //Video encoding
+    CVPixelBufferRef buffer = NULL;
+    
+    //convert uiimage to CGImage.
+    int frameCount = 0;
+    for(int i = 0; i<[images count]; i++)
+    {
+        buffer = [self pixelBufferFromCGImage:[[images objectAtIndex:i] CGImage] size:size];
+        
+        
+        BOOL append_ok = NO;
+        int j = 0;
+        while (!append_ok && j < 30)
+        {
+            if (adaptor.assetWriterInput.readyForMoreMediaData)
+            {
+                printf("appending %d attemp %d\n", frameCount, j);
+                
+                CMTime frameTime = CMTimeMake(frameCount,(int32_t) 10);
+                
+                append_ok = [adaptor appendPixelBuffer:buffer withPresentationTime:frameTime];
+                CVPixelBufferPoolRef bufferPool = adaptor.pixelBufferPool;
+                NSParameterAssert(bufferPool != NULL);
+                
+                [NSThread sleepForTimeInterval:0.05];
+            }
+            else
+            {
+                printf("adaptor not ready %d, %d\n", frameCount, j);
+                [NSThread sleepForTimeInterval:0.1];
+            }
+            j++;
+        }
+        if (!append_ok)
+        {
+            printf("error appending image %d times %d\n", frameCount, j);
+        }
+        frameCount++;
+        CVBufferRelease(buffer);
+    }
+    
+    [videoWriterInput markAsFinished];
+    //[videoWriter finishWriting];
+    
+    //[videoWriterInput release];
+    //[videoWriter release];
+    
+    [images removeAllObjects];
+    
+    NSLog(@"Write Ended"); 
+}
 
 
 
