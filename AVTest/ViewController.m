@@ -234,13 +234,11 @@ NSMutableArray *images;
     
     //Video encoding
     CVPixelBufferRef buffer = NULL;
-    
     //convert uiimage to CGImage.
     int frameCount = 0;
     for(int i = 0; i<[images count]; i++)
     {
         buffer = [self pixelBufferFromCGImage:[[images objectAtIndex:i] CGImage] size:size];
-        
         
         BOOL append_ok = NO;
         int j = 0;
@@ -283,6 +281,44 @@ NSMutableArray *images;
     
     NSLog(@"Write Ended"); 
 }
+
+- (CVPixelBufferRef) pixelBufferFromCGImage:(CGImageRef)image size:(CGSize)size
+{
+    NSDictionary *options = [NSDictionary dictionaryWithObjectsAndKeys:
+                             [NSNumber numberWithBool:YES], kCVPixelBufferCGImageCompatibilityKey,
+                             [NSNumber numberWithBool:YES], kCVPixelBufferCGBitmapContextCompatibilityKey,
+                             nil];
+    CVPixelBufferRef pxbuffer = NULL;
+    CVReturn status = CVPixelBufferCreate(kCFAllocatorDefault, size.width,
+                                          size.height, kCVPixelFormatType_32ARGB, (__bridge CFDictionaryRef) options,
+                                          &pxbuffer);
+    status=status;//Added to make the stupid compiler not show a stupid warning.
+    NSParameterAssert(status == kCVReturnSuccess && pxbuffer != NULL);
+    
+    CVPixelBufferLockBaseAddress(pxbuffer, 0);
+    void *pxdata = CVPixelBufferGetBaseAddress(pxbuffer);
+    NSParameterAssert(pxdata != NULL);
+    
+    CGColorSpaceRef rgbColorSpace = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(pxdata, size.width,
+                                                 size.height, 8, 4*size.width, rgbColorSpace,
+                                                 kCGImageAlphaNoneSkipFirst);
+    NSParameterAssert(context);
+    
+    //CGContextTranslateCTM(context, 0, CGImageGetHeight(image));
+    //CGContextScaleCTM(context, 1.0, -1.0);//Flip vertically to account for different origin
+    
+    CGContextDrawImage(context, CGRectMake(0, 0, CGImageGetWidth(image),
+                                           CGImageGetHeight(image)), image);
+    CGColorSpaceRelease(rgbColorSpace);
+    CGContextRelease(context);
+    
+    CVPixelBufferUnlockBaseAddress(pxbuffer, 0);
+    
+    return pxbuffer;
+}
+
+
 
 
 
